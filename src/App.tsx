@@ -58,11 +58,11 @@ function App() {
   );
 
   useEffect(() => {
-    IncrementalDOM.patch(
-      document.getElementById("renderer")!,
-      (md as any).renderToIncrementalDOM(content)
-    );
     if (currentFileName) {
+      IncrementalDOM.patch(
+        document.getElementById("renderer")!,
+        (md as any).renderToIncrementalDOM(content)
+      );
       fileSystem.updateFile(currentFileName, content);
     }
   }, [content, currentFileName]);
@@ -249,6 +249,7 @@ function App() {
               boxShadow:
                 "0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23)",
             }}
+            readOnly={currentFileName === null}
           />
         </div>
         <div
@@ -261,7 +262,23 @@ function App() {
             fontSize: "1.05rem",
             overflowY: "auto",
           }}
-        ></div>
+        >
+          {currentFileName ? null : (
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                fontStyle: "italic",
+                fontSize: "1.2rem",
+              }}
+            >
+              <span>Open a file to edit!</span>
+            </div>
+          )}
+        </div>
       </div>
       <div
         id="separator"
