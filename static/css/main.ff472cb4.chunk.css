@@ -1,2 +1,0 @@
-body,html{margin:0;padding:0;width:100%;height:100%;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}code{font-family:source-code-pro,Menlo,Monaco,Consolas,"Courier New",monospace}#root{width:100%;height:100%}#separator{height:100%;background-color:#000;width:6px;position:fixed;top:0;left:-3px;z-index:99;transition:width .14s cubic-bezier(.4,0,0,.2),left .14s cubic-bezier(.4,0,0,.2)}#separator:hover{width:12px;left:-6px;cursor:pointer}
-/*# sourceMappingURL=main.ff472cb4.chunk.css.map */
