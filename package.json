@@ -22,7 +22,10 @@
     "react-ace": "^9.0.0",
     "react-ace-builds": "^7.3.1",
     "react-dom": "^16.13.1",
-    "react-scripts": "3.4.1",
+    "react-dropdown": "^1.8.0",
+    "react-dropdown-tree-select": "^2.4.1",
+    "react-scripts": "^3.4.3",
+    "react-select": "^3.1.0",
     "typescript": "^3.7.5"
   },
   "scripts": {
@@ -45,5 +48,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "@types/react-select": "^3.0.19"
   }
 }
