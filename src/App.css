@@ -1,7 +1,7 @@
 #root {
   width: 100%;
   height: 100%;
-  font-family: 'Computer Modern Serif', serif;
+  font-family: 'Computer Modern Serif', 'Noto Serif CJK KR', serif;
 }
 
 p {
@@ -12,6 +12,10 @@ p {
   font-family: 'Computer Modern Typewriter', monospace;
   font-size: 0.95rem;
   line-height: 1.4em;
+}
+
+#renderer a {
+  font-family: 'Computer Modern Typewriter', monospace;
 }
 
 #react-select-3-input {

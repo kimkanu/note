@@ -7,6 +7,7 @@ import MarkdownItKaTeX from "./utils/markdown-it-katex";
 import MarkdownItIncrementalDOM from "markdown-it-incremental-dom";
 
 import Creatable from "react-select/creatable";
+import { FileSystem } from "./models/FileSystem";
 
 import ace from "ace-builds";
 import AceEditor from "react-ace-builds";
@@ -15,26 +16,46 @@ import "ace-builds/src-noconflict/theme-github";
 
 import "katex/dist/katex.min.js";
 import "katex/dist/katex.min.css";
-import { FileSystem } from "./models/FileSystem";
+
+import "highlight.js/styles/github.css";
+
+const hljs = require("highlight.js/lib/core");
+const latex = require("highlight.js/lib/languages/latex");
+
+hljs.registerLanguage("latex", latex);
+hljs.registerLanguage("tex", latex);
 
 /* eslint import/no-webpack-loader-syntax: off */
 ace.config.setModuleUrl(
-  "ace/mode/latex",
-  require("file-loader?esModule=false!ace-builds/src-min-noconflict/mode-latex.js")
+  "ace/mode/markdown",
+  require("file-loader?esModule=false!ace-builds/src-min-noconflict/mode-markdown.js")
 );
 ace.config.setModuleUrl(
   "ace/theme/github",
   require("file-loader?esModule=false!ace-builds/src-min-noconflict/theme-github.js")
 );
 
-const md = new MarkdownIt()
+const md = new MarkdownIt({
+  linkify: true,
+})
   .use(MarkdownItIncrementalDOM, IncrementalDOM)
-  .use(MarkdownItKaTeX);
+  .use(MarkdownItKaTeX)
+  .use(require("markdown-it-highlightjs"), { inline: true });
 
 const MIN_WIDTH_FACTOR = 0.15;
 const MAX_WIDTH_FACTOR = 1 - MIN_WIDTH_FACTOR;
 
 const fileSystem = new FileSystem();
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const reader = new window.FileReader();
+  reader.readAsDataURL(blob);
+  return new Promise((resolve) => {
+    reader.onloadend = () => {
+      resolve(reader.result as string);
+    };
+  });
+}
 
 function App() {
   const [widthFactor, setWidthFactor] = useState<number>(0.5);
@@ -57,6 +78,8 @@ function App() {
     "Export to Hastebin"
   );
 
+  const [isClipboardSupported, setClipboardSupported] = useState(false);
+
   useEffect(() => {
     if (currentFileName) {
       IncrementalDOM.patch(
@@ -66,6 +89,20 @@ function App() {
       fileSystem.updateFile(currentFileName, content);
     }
   }, [content, currentFileName]);
+
+  // try to get the clipboard permission
+  useEffect(() => {
+    navigator.permissions
+      .query({ name: "clipboard-read" as any })
+      .then((result) => {
+        if (result.state === "prompt") {
+          (navigator.clipboard as any).read();
+        } else if (result.state === "granted") {
+          setClipboardSupported(true);
+        }
+      })
+      .catch(() => console.info("Clipboard API is not supported"));
+  }, [isClipboardSupported]);
 
   return (
     <div
@@ -116,7 +153,6 @@ function App() {
               menu: (provided) => ({ ...provided, zIndex: 9999 }),
             }}
             onChange={(value, action) => {
-              console.log(value, action);
               if (action.action === "create-option") {
                 if (!value) return;
                 const filename = (value as { value: string }).value;
@@ -184,11 +220,6 @@ function App() {
         <div
           className="hastebin-button"
           onClick={async () => {
-            if (currentFileName?.startsWith("hastebin:")) {
-              const key = currentFileName.slice("hastebin:".length);
-              window.open(`https://hastebin.com/${key}.md`);
-              return;
-            }
             if (exportButtonText === "Exporting...") return;
             if (content === "") return;
 
@@ -250,6 +281,63 @@ function App() {
                 "0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23)",
             }}
             readOnly={currentFileName === null}
+            onLoad={(editor: any) => {
+              navigator.permissions
+                .query({ name: "clipboard-read" as any })
+                .then((result) => {
+                  if (result.state === "prompt" || result.state === "granted") {
+                    editor.commands.addCommand({
+                      name: "customPaste",
+                      bindKey: { win: "Ctrl-V", mac: "Command-V" },
+                      exec: async () => {
+                        const [
+                          data,
+                        ] = await (navigator.clipboard as any).read();
+                        if (data.types[0] === "text/plain") {
+                          editor.session.replace(
+                            editor.selection.getRange(),
+                            await (await data.getType("text/plain")).text()
+                          );
+                          const {
+                            row,
+                            column,
+                          } = editor.selection.getRange().end;
+                          editor.clearSelection();
+                          editor.selection.moveCursorTo(row, column);
+                        }
+                        if (data.types[0] === "image/png") {
+                          const formData = new FormData();
+                          const base64Image = await blobToBase64(
+                            await data.getType("image/png")
+                          );
+                          formData.append("image", base64Image.slice(22));
+
+                          const response = await fetch(
+                            "https://api.imgur.com/3/image",
+                            {
+                              method: "POST",
+                              headers: {
+                                Authorization: "Client-ID 7e06dc2fe0a78bb",
+                              },
+                              body: formData,
+                            }
+                          );
+                          const {
+                            data: { link },
+                          } = await response.json();
+                          editor.session.replace(
+                            editor.selection.getRange(),
+                            `![](${link})`
+                          );
+                          console.log(editor);
+                          editor.selection.moveCursorBy(0,-link.length - 3);
+                        }
+                      },
+                    });
+                  }
+                })
+                .catch(() => {});
+            }}
           />
         </div>
         <div
