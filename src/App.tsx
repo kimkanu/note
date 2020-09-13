@@ -39,6 +39,7 @@ const md = new MarkdownIt({
   linkify: true,
 })
   .use(MarkdownItIncrementalDOM, IncrementalDOM)
+  .use(require("markdown-it-center-text"))
   .use(MarkdownItKaTeX)
   .use(require("markdown-it-highlightjs"), { inline: true });
 
@@ -330,7 +331,7 @@ function App() {
                             `![](${link})`
                           );
                           console.log(editor);
-                          editor.selection.moveCursorBy(0,-link.length - 3);
+                          editor.selection.moveCursorBy(0, -link.length - 3);
                         }
                       },
                     });
