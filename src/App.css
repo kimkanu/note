@@ -73,3 +73,7 @@ p {
 .text-align-center {
   text-align: center;
 }
+
+#renderer img {
+  max-width: 100%;
+}
