@@ -58,6 +58,41 @@ async function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+function preSuffix(
+  editor: any,
+  pre: string = "",
+  suf: string = "",
+  trim = false
+) {
+  if (editor.getSelectedText().length === 0) {
+    editor.selection.clearSelection();
+    editor.selection.moveCursorLineStart();
+    editor.selection.selectLineEnd();
+  }
+
+  if (trim) {
+    const leftMargin =
+      editor.getSelectedText().length -
+      editor.getSelectedText().trimStart().length;
+    const rightMargin =
+      editor.getSelectedText().length -
+      editor.getSelectedText().trimEnd().length;
+    if (leftMargin > 0 || rightMargin > 0) {
+      const { start, end } = editor.selection.getRange();
+      editor.selection.clearSelection();
+      editor.selection.moveCursorTo(start.row, start.column + leftMargin);
+      editor.selection.selectTo(end.row, end.column - rightMargin);
+    }
+  }
+
+  editor.session.replace(
+    editor.selection.getRange(),
+    `${pre}${editor.getSelectedText()}${suf}`
+  );
+}
+
+let globalEditor: any = null;
+
 function App() {
   const [widthFactor, setWidthFactor] = useState<number>(0.5);
   const [isDragging, setDragging] = useState<boolean>(false);
@@ -83,26 +118,48 @@ function App() {
 
   useEffect(() => {
     if (currentFileName) {
-      IncrementalDOM.patch(
-        document.getElementById("renderer")!,
-        (md as any).renderToIncrementalDOM(content)
-      );
+      try {
+        IncrementalDOM.patch(
+          document.getElementById("renderer")!,
+          (md as any).renderToIncrementalDOM(content)
+        );
+      } catch (e) {
+        // when incremental-dom makes an error, just rerender it
+        document.getElementById("renderer")!.innerHTML = (md as any).render(
+          content
+        );
+      }
       fileSystem.updateFile(currentFileName, content);
     }
   }, [content, currentFileName]);
 
   // try to get the clipboard permission
   useEffect(() => {
-    navigator.permissions
-      .query({ name: "clipboard-read" as any })
-      .then((result) => {
-        if (result.state === "prompt") {
+    (async () => {
+      try {
+        const readPermissionResult = await navigator.permissions.query({
+          name: "clipboard-read" as any,
+        });
+        if (readPermissionResult.state === "prompt") {
           (navigator.clipboard as any).read();
-        } else if (result.state === "granted") {
-          setClipboardSupported(true);
+        } else if (readPermissionResult.state !== "granted") {
+          throw new Error();
         }
-      })
-      .catch(() => console.info("Clipboard API is not supported"));
+
+        const writePermissionResult = await navigator.permissions.query({
+          name: "clipboard-write" as any,
+        });
+        if (writePermissionResult.state === "prompt") {
+          (navigator.clipboard as any).write();
+        } else if (writePermissionResult.state === "granted") {
+          setClipboardSupported(true);
+        } else {
+          throw new Error();
+        }
+      } catch {
+        console.info("Clipboard API is not supported");
+      }
+    })();
   }, [isClipboardSupported]);
 
   return (
@@ -121,7 +178,13 @@ function App() {
           );
         }
       }}
-      onMouseUp={() => setDragging(false)}
+      onMouseUp={() => {
+        setDragging(false);
+        if (globalEditor && globalEditor.getOption("wrap") !== "off") {
+          globalEditor.setOption("wrap", false);
+          globalEditor.setOption("wrap", true);
+        }
+      }}
       onMouseLeave={() => setDragging(false)}
     >
       <div
@@ -210,7 +273,6 @@ function App() {
               setContent(content);
               setImportButtonText("Import from Hastebin");
             } catch (e) {
-              console.log(e);
               setImportButtonText(e.toString());
               return;
             }
@@ -242,7 +304,6 @@ function App() {
               fileSystem.setCurrent(filename);
               setContent(content);
             } catch (e) {
-              console.log(e);
               setExportButtonText(e.toString());
               return;
             }
@@ -272,7 +333,7 @@ function App() {
             theme="github"
             onChange={setContent}
             value={content}
-            width="100%"
+            width={"100%"}
             height="100%"
             editorProps={{ $blockScrolling: true }}
             style={{
@@ -282,21 +343,36 @@ function App() {
             }}
             readOnly={currentFileName === null}
             onLoad={(editor: any) => {
+              globalEditor = editor;
+
+              editor.setOption("wrap", true);
+
               editor.commands.addCommand({
                 name: "centering",
                 bindKey: { win: "Alt-C", mac: "Option-C" },
                 exec: () => {
                   try {
-                    if (editor.getSelectedText().length === 0) {
-                      const { row } = editor.selection.getRange().end;
-                      editor.session.insert({ row, column: 0 }, "-> ");
-                      editor.session.insert({ row, column: Infinity }, " <-");
-                    } else {
-                      editor.session.replace(
-                        editor.selection.getRange(),
-                        `-> ${editor.getSelectedText()} <-`
-                      );
-                    }
+                    preSuffix(editor, "-> ", " <-");
+                  } catch (e) {}
+                },
+              });
+
+              editor.commands.addCommand({
+                name: "bold",
+                bindKey: { win: "Ctrl-B", mac: "Command-B" },
+                exec: () => {
+                  try {
+                    preSuffix(editor, "**", "**", true);
+                  } catch (e) {}
+                },
+              });
+
+              editor.commands.addCommand({
+                name: "italic",
+                bindKey: { win: "Ctrl-I", mac: "Command-I" },
+                exec: () => {
+                  try {
+                    preSuffix(editor, "_", "_", true);
                   } catch (e) {}
                 },
               });
@@ -306,6 +382,27 @@ function App() {
                 bindKey: { win: "Alt-Z", mac: "Option-Z" },
                 exec: () => {
                   editor.setOption("wrap", editor.getOption("wrap") === "off");
+                },
+              });
+
+              editor.commands.addCommand({
+                name: "cut",
+                bindKey: { win: "Ctrl-X", mac: "Command-X" },
+                exec: async () => {
+                  try {
+                    if (editor.getSelectedText().length === 0) {
+                      editor.selection.selectLine();
+                      await navigator.clipboard.writeText(
+                        editor.getSelectedText()
+                      );
+                      editor.session.replace(editor.selection.getRange(), "");
+                    } else {
+                      editor.session.replace(
+                        editor.selection.getRange(),
+                        `-> ${editor.getSelectedText()} <-`
+                      );
+                    }
+                  } catch (e) {}
                 },
               });
 
@@ -356,7 +453,6 @@ function App() {
                             editor.selection.getRange(),
                             `![](${link})`
                           );
-                          console.log(editor);
                           editor.selection.moveCursorBy(0, -link.length - 3);
                         }
                       },
