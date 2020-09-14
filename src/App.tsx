@@ -275,7 +275,6 @@ function App() {
             width="100%"
             height="100%"
             editorProps={{ $blockScrolling: true }}
-            wrapEnabled
             style={{
               borderRadius: "0.75rem",
               boxShadow:
@@ -283,6 +282,33 @@ function App() {
             }}
             readOnly={currentFileName === null}
             onLoad={(editor: any) => {
+              editor.commands.addCommand({
+                name: "centering",
+                bindKey: { win: "Alt-C", mac: "Option-C" },
+                exec: () => {
+                  try {
+                    if (editor.getSelectedText().length === 0) {
+                      const { row } = editor.selection.getRange().end;
+                      editor.session.insert({ row, column: 0 }, "-> ");
+                      editor.session.insert({ row, column: Infinity }, " <-");
+                    } else {
+                      editor.session.replace(
+                        editor.selection.getRange(),
+                        `-> ${editor.getSelectedText()} <-`
+                      );
+                    }
+                  } catch (e) {}
+                },
+              });
+
+              editor.commands.addCommand({
+                name: "wordWrap",
+                bindKey: { win: "Alt-Z", mac: "Option-Z" },
+                exec: () => {
+                  editor.setOption("wrap", editor.getOption("wrap") === "off");
+                },
+              });
+
               navigator.permissions
                 .query({ name: "clipboard-read" as any })
                 .then((result) => {
