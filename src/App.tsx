@@ -392,16 +392,11 @@ function App() {
                   try {
                     if (editor.getSelectedText().length === 0) {
                       editor.selection.selectLine();
-                      await navigator.clipboard.writeText(
-                        editor.getSelectedText()
-                      );
-                      editor.session.replace(editor.selection.getRange(), "");
-                    } else {
-                      editor.session.replace(
-                        editor.selection.getRange(),
-                        `-> ${editor.getSelectedText()} <-`
-                      );
                     }
+                    await navigator.clipboard.writeText(
+                      editor.getSelectedText()
+                    );
+                    editor.session.replace(editor.selection.getRange(), "");
                   } catch (e) {}
                 },
               });
