@@ -58,6 +58,13 @@ async function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+function removeComments(c: string): string {
+  return c
+    .split("\n")
+    .filter((line) => !line.startsWith("%"))
+    .join("\n");
+}
+
 function preSuffix(
   editor: any,
   pre: string = "",
@@ -116,18 +123,28 @@ function App() {
 
   const [isClipboardSupported, setClipboardSupported] = useState(false);
 
+  // import from hastebin
+  useEffect(() => {
+    (async () => {
+      if (window.location.hash && window.location.hash.length > 1) {
+        const keyOrUrl = window.location.hash.slice(1);
+        await importFromHastebin(keyOrUrl);
+        window.location.hash = "";
+      }
+    })();
+  }, []);
+
   useEffect(() => {
     if (currentFileName) {
+      const c = removeComments(content);
       try {
         IncrementalDOM.patch(
           document.getElementById("renderer")!,
-          (md as any).renderToIncrementalDOM(content)
+          (md as any).renderToIncrementalDOM(c)
         );
       } catch (e) {
         // when incremental-dom makes an error, just rerender it
-        document.getElementById("renderer")!.innerHTML = (md as any).render(
-          content
-        );
+        document.getElementById("renderer")!.innerHTML = (md as any).render(c);
       }
       fileSystem.updateFile(currentFileName, content);
     }
@@ -161,6 +178,39 @@ function App() {
       }
     })();
   }, [isClipboardSupported]);
+
+  async function importFromHastebin(keyOrUrl: string) {
+    let key = keyOrUrl;
+    if (keyOrUrl.includes("haste.zneix.eu/")) {
+      const matches = keyOrUrl.match(/(?<=haste.zneix.eu\/)[^.]*/);
+      if (!matches) {
+        return;
+      }
+      key = matches[0];
+    }
+
+    setImportButtonText("Importing...");
+    const url = `https://cors-anywhere.herokuapp.com/https://haste.zneix.eu/raw/${key}`;
+    try {
+      const filename = `hastebin:${key}`;
+      const content = await (await fetch(url)).text();
+      if (content === '{"message":"Document not found."}') {
+        alert("Document not found.");
+        setImportButtonText("Import from Hastebin");
+        return;
+      }
+      fileSystem.createFile(filename);
+      fileSystem.updateFile(filename, content);
+      setFileList(Array.from(fileSystem.index));
+      setCurrentFileName(filename);
+      fileSystem.setCurrent(filename);
+      setContent(content);
+      setImportButtonText("Import from Hastebin");
+    } catch (e) {
+      setImportButtonText(e.toString());
+      return;
+    }
+  }
 
   return (
     <div
@@ -246,36 +296,12 @@ function App() {
             if (importButtonText === "Importing...") return;
             const keyOrUrl = prompt(
               "Please enter the url or the key of hastebin document",
-              "https://hastebin.com/about"
+              "https://haste.zneix.eu/about"
             );
             if (keyOrUrl === null) {
               return;
             }
-            let key = keyOrUrl;
-            if (keyOrUrl.includes("hastebin.com/")) {
-              const matches = keyOrUrl.match(/(?<=hastebin.com\/)[^.]*/);
-              if (!matches) {
-                return;
-              }
-              key = matches[0];
-            }
-
-            setImportButtonText("Importing...");
-            const url = `https://cors-anywhere.herokuapp.com/https://hastebin.com/raw/${key}`;
-            try {
-              const filename = `hastebin:${key}`;
-              const content = await (await fetch(url)).text();
-              fileSystem.createFile(filename);
-              fileSystem.updateFile(filename, content);
-              setFileList(Array.from(fileSystem.index));
-              setCurrentFileName(filename);
-              fileSystem.setCurrent(filename);
-              setContent(content);
-              setImportButtonText("Import from Hastebin");
-            } catch (e) {
-              setImportButtonText(e.toString());
-              return;
-            }
+            await importFromHastebin(keyOrUrl);
           }}
         >
           {importButtonText}
@@ -288,12 +314,12 @@ function App() {
 
             setExportButtonText("Exporting...");
             const url =
-              "https://cors-anywhere.herokuapp.com/https://hastebin.com/documents";
+              "https://cors-anywhere.herokuapp.com/https://haste.zneix.eu/documents";
             try {
               const { key }: { key: string } = await (
                 await fetch(url, { method: "POST", body: content })
               ).json();
-              window.open(`https://hastebin.com/${key}.md`);
+              window.open(`https://haste.zneix.eu/${key}.md`);
               setExportButtonText("Export to Hastebin");
 
               const filename = `hastebin:${key}`;
@@ -328,134 +354,10 @@ function App() {
             backgroundColor: "#eae8ec",
           }}
         >
-          <AceEditor
-            mode="latex"
-            theme="github"
-            onChange={setContent}
-            value={content}
-            width={"100%"}
-            height="100%"
-            editorProps={{ $blockScrolling: true }}
-            style={{
-              borderRadius: "0.75rem",
-              boxShadow:
-                "0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23)",
-            }}
-            readOnly={currentFileName === null}
-            onLoad={(editor: any) => {
-              globalEditor = editor;
-
-              editor.setOption("wrap", true);
-
-              editor.commands.addCommand({
-                name: "centering",
-                bindKey: { win: "Alt-C", mac: "Option-C" },
-                exec: () => {
-                  try {
-                    preSuffix(editor, "-> ", " <-");
-                  } catch (e) {}
-                },
-              });
-
-              editor.commands.addCommand({
-                name: "bold",
-                bindKey: { win: "Ctrl-B", mac: "Command-B" },
-                exec: () => {
-                  try {
-                    preSuffix(editor, "**", "**", true);
-                  } catch (e) {}
-                },
-              });
-
-              editor.commands.addCommand({
-                name: "italic",
-                bindKey: { win: "Ctrl-I", mac: "Command-I" },
-                exec: () => {
-                  try {
-                    preSuffix(editor, "_", "_", true);
-                  } catch (e) {}
-                },
-              });
-
-              editor.commands.addCommand({
-                name: "wordWrap",
-                bindKey: { win: "Alt-Z", mac: "Option-Z" },
-                exec: () => {
-                  editor.setOption("wrap", editor.getOption("wrap") === "off");
-                },
-              });
-
-              editor.commands.addCommand({
-                name: "cut",
-                bindKey: { win: "Ctrl-X", mac: "Command-X" },
-                exec: async () => {
-                  try {
-                    if (editor.getSelectedText().length === 0) {
-                      editor.selection.selectLine();
-                    }
-                    await navigator.clipboard.writeText(
-                      editor.getSelectedText()
-                    );
-                    editor.session.replace(editor.selection.getRange(), "");
-                  } catch (e) {}
-                },
-              });
-
-              navigator.permissions
-                .query({ name: "clipboard-read" as any })
-                .then((result) => {
-                  if (result.state === "prompt" || result.state === "granted") {
-                    editor.commands.addCommand({
-                      name: "customPaste",
-                      bindKey: { win: "Ctrl-V", mac: "Command-V" },
-                      exec: async () => {
-                        const [
-                          data,
-                        ] = await (navigator.clipboard as any).read();
-                        if (data.types[0] === "text/plain") {
-                          editor.session.replace(
-                            editor.selection.getRange(),
-                            await (await data.getType("text/plain")).text()
-                          );
-                          const {
-                            row,
-                            column,
-                          } = editor.selection.getRange().end;
-                          editor.clearSelection();
-                          editor.selection.moveCursorTo(row, column);
-                        }
-                        if (data.types[0] === "image/png") {
-                          const formData = new FormData();
-                          const base64Image = await blobToBase64(
-                            await data.getType("image/png")
-                          );
-                          formData.append("image", base64Image.slice(22));
-
-                          const response = await fetch(
-                            "https://api.imgur.com/3/image",
-                            {
-                              method: "POST",
-                              headers: {
-                                Authorization: "Client-ID 7e06dc2fe0a78bb",
-                              },
-                              body: formData,
-                            }
-                          );
-                          const {
-                            data: { link },
-                          } = await response.json();
-                          editor.session.replace(
-                            editor.selection.getRange(),
-                            `![](${link})`
-                          );
-                          editor.selection.moveCursorBy(0, -link.length - 3);
-                        }
-                      },
-                    });
-                  }
-                })
-                .catch(() => {});
-            }}
+          <Editor
+            content={content}
+            setContent={setContent}
+            currentFileName={currentFileName}
           />
         </div>
         <div
@@ -497,5 +399,132 @@ function App() {
     </div>
   );
 }
+
+type EditorProps = any; // todo
+const Editor: React.FC<EditorProps> = React.memo(
+  ({ content, setContent, currentFileName }) => (
+    <AceEditor
+      mode="latex"
+      theme="github"
+      onChange={setContent}
+      value={content}
+      width={"100%"}
+      height="100%"
+      editorProps={{ $blockScrolling: true }}
+      style={{
+        borderRadius: "0.75rem",
+        boxShadow: "0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23)",
+      }}
+      readOnly={currentFileName === null}
+      onLoad={(editor: any) => {
+        globalEditor = editor;
+
+        editor.setOption("wrap", true);
+
+        editor.commands.addCommand({
+          name: "centering",
+          bindKey: { win: "Alt-C", mac: "Option-C" },
+          exec: () => {
+            try {
+              preSuffix(editor, "-> ", " <-");
+            } catch (e) {}
+          },
+        });
+
+        editor.commands.addCommand({
+          name: "bold",
+          bindKey: { win: "Ctrl-B", mac: "Command-B" },
+          exec: () => {
+            try {
+              preSuffix(editor, "**", "**", true);
+            } catch (e) {}
+          },
+        });
+
+        editor.commands.addCommand({
+          name: "italic",
+          bindKey: { win: "Ctrl-I", mac: "Command-I" },
+          exec: () => {
+            try {
+              preSuffix(editor, "_", "_", true);
+            } catch (e) {}
+          },
+        });
+
+        editor.commands.addCommand({
+          name: "wordWrap",
+          bindKey: { win: "Alt-Z", mac: "Option-Z" },
+          exec: () => {
+            editor.setOption("wrap", editor.getOption("wrap") === "off");
+          },
+        });
+
+        editor.commands.addCommand({
+          name: "cut",
+          bindKey: { win: "Ctrl-X", mac: "Command-X" },
+          exec: async () => {
+            try {
+              if (editor.getSelectedText().length === 0) {
+                editor.selection.selectLine();
+              }
+              await navigator.clipboard.writeText(editor.getSelectedText());
+              editor.session.replace(editor.selection.getRange(), "");
+            } catch (e) {}
+          },
+        });
+
+        navigator.permissions
+          .query({ name: "clipboard-read" as any })
+          .then((result) => {
+            if (result.state === "prompt" || result.state === "granted") {
+              editor.commands.addCommand({
+                name: "customPaste",
+                bindKey: { win: "Ctrl-V", mac: "Command-V" },
+                exec: async () => {
+                  const [data] = await (navigator.clipboard as any).read();
+                  if (data.types[0] === "text/plain") {
+                    editor.session.replace(
+                      editor.selection.getRange(),
+                      await (await data.getType("text/plain")).text()
+                    );
+                    const { row, column } = editor.selection.getRange().end;
+                    editor.clearSelection();
+                    editor.selection.moveCursorTo(row, column);
+                  }
+                  if (data.types[0] === "image/png") {
+                    const formData = new FormData();
+                    const base64Image = await blobToBase64(
+                      await data.getType("image/png")
+                    );
+                    formData.append("image", base64Image.slice(22));
+
+                    const response = await fetch(
+                      "https://api.imgur.com/3/image",
+                      {
+                        method: "POST",
+                        headers: {
+                          Authorization: "Client-ID 7e06dc2fe0a78bb",
+                        },
+                        body: formData,
+                      }
+                    );
+                    const {
+                      data: { link },
+                    } = await response.json();
+                    editor.session.replace(
+                      editor.selection.getRange(),
+                      `![](${link})`
+                    );
+                    editor.selection.moveCursorBy(0, -link.length - 3);
+                  }
+                },
+              });
+            }
+          })
+          .catch(() => {});
+      }}
+    />
+  )
+);
 
 export default App;
