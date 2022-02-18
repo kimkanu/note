@@ -21,7 +21,7 @@
     "katex": "^0.11.1",
     "markdown-it": "^12.3.2",
     "markdown-it-center-text": "^1.0.4",
-    "markdown-it-highlightjs": "^3.2.0",
+    "markdown-it-highlightjs": "^3.3.1",
     "markdown-it-incremental-dom": "^2.1.0",
     "markdown-it-katex": "^2.0.3",
     "markdown-it-reddit-spoiler": "^1.0.1",
